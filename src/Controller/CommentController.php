@@ -4,93 +4,163 @@ namespace App\Controller;
 
 use App\Entity\Comment;
 use App\Form\CommentType;
-use App\Repository\CommentRepository;
-use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
+use Doctrine\Common\Persistence\ObjectManager;
+use FOS\RestBundle\Controller\FOSRestController;
+use FOS\RestBundle\Controller\Annotations as FOSRest;
+use Sensio\Bundle\FrameworkExtraBundle\Configuration\ParamConverter;
 use Symfony\Component\HttpFoundation\Request;
 use Symfony\Component\HttpFoundation\Response;
-use Symfony\Component\Routing\Annotation\Route;
+use Symfony\Component\Serializer\SerializerInterface;
+use Symfony\Component\Validator\Validator\ValidatorInterface;
 
-/**
- * @Route("/comments")
- */
-class CommentController extends AbstractController
+class CommentController extends FOSRestController
 {
     /**
-     * @Route("/", name="comment_index", methods={"GET"})
+     * @FOSRest\Get("/api/comments")
+     *
+     * @param ObjectManager $manager
+     *
+     * @param SerializerInterface $serializer
+     * @return Response
      */
-    public function index(CommentRepository $commentRepository): Response
+    public function getCommentsAction(ObjectManager $manager, SerializerInterface $serializer)
     {
-        return $this->render('comment/index.html.twig', [
-            'comments' => $commentRepository->findAll(),
+        $commentRepository = $manager->getRepository(Comment::class);
+        $comments = $commentRepository->findAll();
+
+        // Serialize the object in Json
+        $jsonObject = $serializer->serialize($comments, 'json', [
+            'circular_reference_handler' => function ($object) {
+                return $object->getId();
+            }
         ]);
+
+        return new Response($jsonObject, Response::HTTP_OK, ['Content-Type' => 'application/json']);
     }
 
     /**
-     * @Route("/new", name="comment_new", methods={"GET","POST"})
+     * @FOSRest\Post("/api/comments/new")
+     *
+     * @ParamConverter("comment", converter="fos_rest.request_body")
+     *
+     * @param Comment $comment
+     * @param ObjectManager $manager
+     * @param ValidatorInterface $validator
+     * @param SerializerInterface $serializer
+     * @param Request $request
+     *
+     * @return Response
      */
-    public function new(Request $request): Response
+    public function postCommentsAction(Comment $comment, ObjectManager $manager, ValidatorInterface $validator, SerializerInterface $serializer, Request $request)
     {
-        $comment = new Comment();
-        $form = $this->createForm(CommentType::class, $comment);
-        $form->handleRequest($request);
+        $newComment = new Comment();
 
-        if ($form->isSubmitted() && $form->isValid()) {
-            $entityManager = $this->getDoctrine()->getManager();
-            $entityManager->persist($comment);
-            $entityManager->flush();
+        $newComment = $this->createForm(CommentType::class, $newComment);
+        $newComment->submit($request->request->all());
 
-            return $this->redirectToRoute('comment_index');
-        }
+        $errors = $validator->validate($comment);
 
-        return $this->render('comment/new.html.twig', [
-            'comment' => $comment,
-            'form' => $form->createView(),
-        ]);
-    }
-
-    /**
-     * @Route("/{id}", name="comment_show", methods={"GET"})
-     */
-    public function show(Comment $comment): Response
-    {
-        return $this->render('comment/show.html.twig', [
-            'comment' => $comment,
-        ]);
-    }
-
-    /**
-     * @Route("/{id}/edit", name="comment_edit", methods={"GET","POST"})
-     */
-    public function edit(Request $request, Comment $comment): Response
-    {
-        $form = $this->createForm(CommentType::class, $comment);
-        $form->handleRequest($request);
-
-        if ($form->isSubmitted() && $form->isValid()) {
-            $this->getDoctrine()->getManager()->flush();
-
-            return $this->redirectToRoute('comment_index', [
-                'id' => $comment->getId(),
+        if (!count($errors) ) {
+            $jsonObject = $serializer->serialize($comment, 'json', [
+                'circular_reference_handler' => function ($object) {
+                    return $object->getId();
+                }
             ]);
+
+            $manager->persist($newComment);
+            $manager->flush();
+            return new Response($jsonObject, Response::HTTP_OK, ['Content-Type' => 'application/json']);
         }
 
-        return $this->render('comment/edit.html.twig', [
-            'comment' => $comment,
-            'form' => $form->createView(),
-        ]);
+        return new Response('Error', Response::HTTP_NOT_FOUND, ['Content-Type' => 'application/json']);
     }
 
     /**
-     * @Route("/{id}", name="comment_delete", methods={"DELETE"})
+     * @FOSRest\Get("/api/comments/{id}")
+     *
+     * @param ObjectManager $manager
+     * @param SerializerInterface $serializer
+     * @param $id
+     *
+     * @return Response
      */
-    public function delete(Request $request, Comment $comment): Response
+    public function getCommentAction(ObjectManager $manager, SerializerInterface $serializer, $id)
     {
-        if ($this->isCsrfTokenValid('delete'.$comment->getId(), $request->request->get('_token'))) {
-            $entityManager = $this->getDoctrine()->getManager();
-            $entityManager->remove($comment);
-            $entityManager->flush();
+        $commentRepository = $manager->getRepository(Comment::class);
+        $comment = $commentRepository->find($id);
+
+        if (is_null($comment)) {
+            return new Response('Comment not found', Response::HTTP_NOT_FOUND, ['Content-Type' => 'application/json']);
         }
 
-        return $this->redirectToRoute('comment_index');
+        // Serialize the object in Json
+        $jsonObject = $serializer->serialize($comment, 'json', [
+            'circular_reference_handler' => function ($object) {
+                return $object->getId();
+            }
+        ]);
+
+        return new Response($jsonObject, Response::HTTP_OK, ['Content-Type' => 'application/json']);
+    }
+
+    /**
+     * @FOSRest\Put("/api/comments/{id}")
+     *
+     * @ParamConverter("comment", converter="fos_rest.request_body")
+     *
+     * @param Request $request
+     * @param Comment $comment
+     * @param ObjectManager $manager
+     * @param $id
+     * @param ValidatorInterface $validator
+     * @param SerializerInterface $serializer
+     *
+     * @return Response
+     */
+    public function putCommentAction(Request $request, Comment $comment, ObjectManager $manager, $id, ValidatorInterface $validator, SerializerInterface $serializer)
+    {
+        $commentRepository = $manager->getRepository(Comment::class);
+        $savedComment = $commentRepository->find($id);
+
+        $commentForm = $this->createForm(CommentType::class, $savedComment);
+        $commentForm->submit($request->request->all());
+
+        $errors = $validator->validate($comment);
+
+        if (!count($errors) ) {
+            $jsonObject = $serializer->serialize($comment, 'json', [
+                'circular_reference_handler' => function ($object) {
+                    return $object->getId();
+                }
+            ]);
+
+            $manager->persist($savedComment);
+            $manager->flush();
+            return new Response($jsonObject, Response::HTTP_OK, ['Content-Type' => 'application/json']);
+        }
+
+        return new Response('Error', Response::HTTP_NOT_FOUND, ['Content-Type' => 'application/json']);
+    }
+
+    /**
+     * @FOSRest\Delete("/api/comments/{id}")
+     *
+     * @param ObjectManager $manager
+     * @param $id
+     *
+     * @return Response
+     */
+    public function deleteCommentAction(ObjectManager $manager, $id)
+    {
+        $commentRepository = $manager->getRepository(Comment::class);
+        $comment = $commentRepository->find($id);
+
+        if (!is_null($comment)) {
+            $manager->remove($comment);
+            $manager->flush();
+            return new Response('Ok', Response::HTTP_OK, ['Content-Type' => 'application/json']);
+        }
+
+        return new Response('Error', Response::HTTP_NOT_FOUND, ['Content-Type' => 'application/json']);
     }
 }

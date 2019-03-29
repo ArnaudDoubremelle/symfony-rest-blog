@@ -4,93 +4,163 @@ namespace App\Controller;
 
 use App\Entity\Category;
 use App\Form\CategoryType;
-use App\Repository\CategoryRepository;
-use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
+use Doctrine\Common\Persistence\ObjectManager;
+use FOS\RestBundle\Controller\FOSRestController;
+use FOS\RestBundle\Controller\Annotations as FOSRest;
+use Sensio\Bundle\FrameworkExtraBundle\Configuration\ParamConverter;
 use Symfony\Component\HttpFoundation\Request;
 use Symfony\Component\HttpFoundation\Response;
-use Symfony\Component\Routing\Annotation\Route;
+use Symfony\Component\Serializer\SerializerInterface;
+use Symfony\Component\Validator\Validator\ValidatorInterface;
 
-/**
- * @Route("/categories")
- */
-class CategoryController extends AbstractController
+class CategoryController extends FOSRestController
 {
     /**
-     * @Route("/", name="category_index", methods={"GET"})
+     * @FOSRest\Get("/api/categories")
+     *
+     * @param ObjectManager $manager
+     *
+     * @param SerializerInterface $serializer
+     * @return Response
      */
-    public function index(CategoryRepository $categoryRepository): Response
+    public function getCategoriesAction(ObjectManager $manager, SerializerInterface $serializer)
     {
-        return $this->render('category/index.html.twig', [
-            'categories' => $categoryRepository->findAll(),
+        $categoryRepository = $manager->getRepository(Category::class);
+        $categories = $categoryRepository->findAll();
+
+        // Serialize the object in Json
+        $jsonObject = $serializer->serialize($categories, 'json', [
+            'circular_reference_handler' => function ($object) {
+                return $object->getId();
+            }
         ]);
+
+        return new Response($jsonObject, Response::HTTP_OK, ['Content-Type' => 'application/json']);
     }
 
     /**
-     * @Route("/new", name="category_new", methods={"GET","POST"})
+     * @FOSRest\Post("/api/categories/new")
+     *
+     * @ParamConverter("category", converter="fos_rest.request_body")
+     *
+     * @param Category $category
+     * @param ObjectManager $manager
+     * @param ValidatorInterface $validator
+     * @param SerializerInterface $serializer
+     * @param Request $request
+     *
+     * @return Response
      */
-    public function new(Request $request): Response
+    public function postCategoryAction(Category $category, ObjectManager $manager, ValidatorInterface $validator, SerializerInterface $serializer, Request $request)
     {
-        $category = new Category();
-        $form = $this->createForm(CategoryType::class, $category);
-        $form->handleRequest($request);
+        $newCategory = new Category();
 
-        if ($form->isSubmitted() && $form->isValid()) {
-            $entityManager = $this->getDoctrine()->getManager();
-            $entityManager->persist($category);
-            $entityManager->flush();
+        $newCategory = $this->createForm(CategoryType::class, $newCategory);
+        $newCategory->submit($request->request->all());
 
-            return $this->redirectToRoute('category_index');
-        }
+        $errors = $validator->validate($category);
 
-        return $this->render('category/new.html.twig', [
-            'category' => $category,
-            'form' => $form->createView(),
-        ]);
-    }
-
-    /**
-     * @Route("/{id}", name="category_show", methods={"GET"})
-     */
-    public function show(Category $category): Response
-    {
-        return $this->render('category/show.html.twig', [
-            'category' => $category,
-        ]);
-    }
-
-    /**
-     * @Route("/{id}/edit", name="category_edit", methods={"GET","POST"})
-     */
-    public function edit(Request $request, Category $category): Response
-    {
-        $form = $this->createForm(CategoryType::class, $category);
-        $form->handleRequest($request);
-
-        if ($form->isSubmitted() && $form->isValid()) {
-            $this->getDoctrine()->getManager()->flush();
-
-            return $this->redirectToRoute('category_index', [
-                'id' => $category->getId(),
+        if (!count($errors) ) {
+            $jsonObject = $serializer->serialize($category, 'json', [
+                'circular_reference_handler' => function ($object) {
+                    return $object->getId();
+                }
             ]);
+
+            $manager->persist($newCategory);
+            $manager->flush();
+            return new Response($jsonObject, Response::HTTP_OK, ['Content-Type' => 'application/json']);
         }
 
-        return $this->render('category/edit.html.twig', [
-            'category' => $category,
-            'form' => $form->createView(),
-        ]);
+        return new Response('Error', Response::HTTP_NOT_FOUND, ['Content-Type' => 'application/json']);
     }
 
     /**
-     * @Route("/{id}", name="category_delete", methods={"DELETE"})
+     * @FOSRest\Get("/api/categories/{id}")
+     *
+     * @param ObjectManager $manager
+     * @param SerializerInterface $serializer
+     * @param $id
+     *
+     * @return Response
      */
-    public function delete(Request $request, Category $category): Response
+    public function getCategoryAction(ObjectManager $manager, SerializerInterface $serializer, $id)
     {
-        if ($this->isCsrfTokenValid('delete'.$category->getId(), $request->request->get('_token'))) {
-            $entityManager = $this->getDoctrine()->getManager();
-            $entityManager->remove($category);
-            $entityManager->flush();
+        $categoryRepository = $manager->getRepository(Category::class);
+        $category = $categoryRepository->find($id);
+
+        if (is_null($category)) {
+            return new Response('Category not found', Response::HTTP_NOT_FOUND, ['Content-Type' => 'application/json']);
         }
 
-        return $this->redirectToRoute('category_index');
+        // Serialize the object in Json
+        $jsonObject = $serializer->serialize($category, 'json', [
+            'circular_reference_handler' => function ($object) {
+                return $object->getId();
+            }
+        ]);
+
+        return new Response($jsonObject, Response::HTTP_OK, ['Content-Type' => 'application/json']);
+    }
+
+    /**
+     * @FOSRest\Put("/api/categories/{id}")
+     *
+     * @ParamConverter("category", converter="fos_rest.request_body")
+     *
+     * @param Request $request
+     * @param Category $category
+     * @param ObjectManager $manager
+     * @param $id
+     * @param ValidatorInterface $validator
+     * @param SerializerInterface $serializer
+     *
+     * @return Response
+     */
+    public function putCategoryAction(Request $request, Category $category, ObjectManager $manager, $id, ValidatorInterface $validator, SerializerInterface $serializer)
+    {
+        $categoryRepository = $manager->getRepository(Category::class);
+        $savedCategory = $categoryRepository->find($id);
+
+        $categoryForm = $this->createForm(CategoryType::class, $savedCategory);
+        $categoryForm->submit($request->request->all());
+
+        $errors = $validator->validate($category);
+
+        if (!count($errors) ) {
+            $jsonObject = $serializer->serialize($category, 'json', [
+                'circular_reference_handler' => function ($object) {
+                    return $object->getId();
+                }
+            ]);
+
+            $manager->persist($savedCategory);
+            $manager->flush();
+            return new Response($jsonObject, Response::HTTP_OK, ['Content-Type' => 'application/json']);
+        }
+
+        return new Response('Error', Response::HTTP_NOT_FOUND, ['Content-Type' => 'application/json']);
+    }
+
+    /**
+     * @FOSRest\Delete("/api/categories/{id}")
+     *
+     * @param ObjectManager $manager
+     * @param $id
+     *
+     * @return Response
+     */
+    public function deleteCategoryAction(ObjectManager $manager, $id)
+    {
+        $categoryRepository = $manager->getRepository(Category::class);
+        $category = $categoryRepository->find($id);
+
+        if (!is_null($category)) {
+            $manager->remove($category);
+            $manager->flush();
+            return new Response('Ok', Response::HTTP_OK, ['Content-Type' => 'application/json']);
+        }
+
+        return new Response('Error', Response::HTTP_NOT_FOUND, ['Content-Type' => 'application/json']);
     }
 }
