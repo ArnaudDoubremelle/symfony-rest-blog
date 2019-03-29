@@ -38,12 +38,12 @@ class AppFixtures extends Fixture
         }
 
         // Article fixtures
-        for ($i = 0; $i < 100; $i++) {
+        for ($i = 0; $i < 10; $i++) {
             $article = new Article();
-            $article->setTitle('Article ' . $i);
-            $article->setText('Lorem ispum' . $i);
-            $article->setCategory($categories[rand(0, 9)]);
+            $article->setTitle("Article " . $i);
+            $article->setText("Lorem ispum ." . $i);
             $article->setAuthor($authors[rand(0, 9)]);
+            $article->setCategory($categories[rand(0, 9)]);
 
             $manager->persist($article);
 
@@ -53,8 +53,8 @@ class AppFixtures extends Fixture
         // Comment fixtures
         for ($i = 0; $i < 50; $i++) {
             $comment = new Comment();
-            $comment->setContent("Lorem ispum" . $i);
-            $comment->setArticle($articles[rand(0, 99)]);
+            $comment->setText("Great article " . $i);
+            $comment->setArticle($articles[rand(0,  9)]);
 
             $manager->persist($comment);
         }

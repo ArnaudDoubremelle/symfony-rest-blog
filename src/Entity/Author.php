@@ -24,7 +24,7 @@ class Author
     private $name;
 
     /**
-     * @ORM\OneToMany(targetEntity="App\Entity\Article", mappedBy="author")
+     * @ORM\OneToMany(targetEntity="App\Entity\Article", mappedBy="author", orphanRemoval=true)
      */
     private $articles;
 
@@ -79,10 +79,5 @@ class Author
         }
 
         return $this;
-    }
-
-    public function __toString()
-    {
-        return (string) $this->getId();
     }
 }

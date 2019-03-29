@@ -19,10 +19,11 @@ class Comment
     /**
      * @ORM\Column(type="text")
      */
-    private $content;
+    private $text;
 
     /**
-     * @ORM\ManyToOne(targetEntity="App\Entity\Article", inversedBy="comment")
+     * @ORM\ManyToOne(targetEntity="App\Entity\Article", inversedBy="comments")
+     * @ORM\JoinColumn(nullable=false)
      */
     private $article;
 
@@ -31,14 +32,14 @@ class Comment
         return $this->id;
     }
 
-    public function getContent(): ?string
+    public function getText(): ?string
     {
-        return $this->content;
+        return $this->text;
     }
 
-    public function setContent(string $content): self
+    public function setText(string $text): self
     {
-        $this->content = $content;
+        $this->text = $text;
 
         return $this;
     }
@@ -53,10 +54,5 @@ class Comment
         $this->article = $article;
 
         return $this;
-    }
-
-    public function __toString()
-    {
-        return (string) $this->getId();
     }
 }

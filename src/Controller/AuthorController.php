@@ -4,93 +4,164 @@ namespace App\Controller;
 
 use App\Entity\Author;
 use App\Form\AuthorType;
-use App\Repository\AuthorRepository;
-use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
+use Doctrine\Common\Persistence\ObjectManager;
+use FOS\RestBundle\Controller\FOSRestController;
+use FOS\RestBundle\Controller\Annotations as FOSRest;
+use Sensio\Bundle\FrameworkExtraBundle\Configuration\ParamConverter;
 use Symfony\Component\HttpFoundation\Request;
 use Symfony\Component\HttpFoundation\Response;
 use Symfony\Component\Routing\Annotation\Route;
+use Symfony\Component\Serializer\SerializerInterface;
+use Symfony\Component\Validator\Validator\ValidatorInterface;
 
-/**
- * @Route("/authors")
- */
-class AuthorController extends AbstractController
+class AuthorController extends FOSRestController
 {
     /**
-     * @Route("/", name="author_index", methods={"GET"})
+     * @FOSRest\Get("/api/authors")
+     *
+     * @param ObjectManager $manager
+     *
+     * @param SerializerInterface $serializer
+     * @return Response
      */
-    public function index(AuthorRepository $authorRepository): Response
+    public function getAuthorsAction(ObjectManager $manager, SerializerInterface $serializer)
     {
-        return $this->render('author/index.html.twig', [
-            'authors' => $authorRepository->findAll(),
+        $authorRepository = $manager->getRepository(Author::class);
+        $authors = $authorRepository->findAll();
+
+        // Serialize the object in Json
+        $jsonObject = $serializer->serialize($authors, 'json', [
+            'circular_reference_handler' => function ($object) {
+                return $object->getId();
+            }
         ]);
+
+        return new Response($jsonObject, Response::HTTP_OK, ['Content-Type' => 'application/json']);
     }
 
     /**
-     * @Route("/new", name="author_new", methods={"GET","POST"})
+     * @FOSRest\Post("/api/authors/new")
+     *
+     * @ParamConverter("author", converter="fos_rest.request_body")
+     *
+     * @param Author $author
+     * @param ObjectManager $manager
+     * @param ValidatorInterface $validator
+     * @param SerializerInterface $serializer
+     * @param Request $request
+     *
+     * @return Response
      */
-    public function new(Request $request): Response
+    public function postAuthorAction(Author $author, ObjectManager $manager, ValidatorInterface $validator, SerializerInterface $serializer, Request $request)
     {
-        $author = new Author();
-        $form = $this->createForm(AuthorType::class, $author);
-        $form->handleRequest($request);
+        $newAuthor = new Author();
 
-        if ($form->isSubmitted() && $form->isValid()) {
-            $entityManager = $this->getDoctrine()->getManager();
-            $entityManager->persist($author);
-            $entityManager->flush();
+        $authorForm = $this->createForm(AuthorType::class, $newAuthor);
+        $authorForm->submit($request->request->all());
 
-            return $this->redirectToRoute('author_index');
-        }
+        $errors = $validator->validate($author);
 
-        return $this->render('author/new.html.twig', [
-            'author' => $author,
-            'form' => $form->createView(),
-        ]);
-    }
-
-    /**
-     * @Route("/{id}", name="author_show", methods={"GET"})
-     */
-    public function show(Author $author): Response
-    {
-        return $this->render('author/show.html.twig', [
-            'author' => $author,
-        ]);
-    }
-
-    /**
-     * @Route("/{id}/edit", name="author_edit", methods={"GET","POST"})
-     */
-    public function edit(Request $request, Author $author): Response
-    {
-        $form = $this->createForm(AuthorType::class, $author);
-        $form->handleRequest($request);
-
-        if ($form->isSubmitted() && $form->isValid()) {
-            $this->getDoctrine()->getManager()->flush();
-
-            return $this->redirectToRoute('author_index', [
-                'id' => $author->getId(),
+        if (!count($errors) ) {
+            $jsonObject = $serializer->serialize($author, 'json', [
+                'circular_reference_handler' => function ($object) {
+                    return $object->getId();
+                }
             ]);
+
+            $manager->persist($newAuthor);
+            $manager->flush();
+            return new Response($jsonObject, Response::HTTP_OK, ['Content-Type' => 'application/json']);
         }
 
-        return $this->render('author/edit.html.twig', [
-            'author' => $author,
-            'form' => $form->createView(),
-        ]);
+        return new Response('Error', Response::HTTP_NOT_FOUND, ['Content-Type' => 'application/json']);
     }
 
     /**
-     * @Route("/{id}", name="author_delete", methods={"DELETE"})
+     * @FOSRest\Get("/api/authors/{id}")
+     *
+     * @param ObjectManager $manager
+     * @param SerializerInterface $serializer
+     * @param $id
+     *
+     * @return Response
      */
-    public function delete(Request $request, Author $author): Response
+    public function getAuthorAction(ObjectManager $manager, SerializerInterface $serializer, $id)
     {
-        if ($this->isCsrfTokenValid('delete'.$author->getId(), $request->request->get('_token'))) {
-            $entityManager = $this->getDoctrine()->getManager();
-            $entityManager->remove($author);
-            $entityManager->flush();
+        $authorRepository = $manager->getRepository(Author::class);
+        $author = $authorRepository->find($id);
+
+        if (is_null($author)) {
+            return new Response('Author not found', Response::HTTP_NOT_FOUND, ['Content-Type' => 'application/json']);
         }
 
-        return $this->redirectToRoute('author_index');
+        // Serialize the object in Json
+        $jsonObject = $serializer->serialize($author, 'json', [
+            'circular_reference_handler' => function ($object) {
+                return $object->getId();
+            }
+        ]);
+
+        return new Response($jsonObject, Response::HTTP_OK, ['Content-Type' => 'application/json']);
+    }
+
+    /**
+     * @FOSRest\Put("/api/authors/{id}")
+     *
+     * @ParamConverter("author", converter="fos_rest.request_body")
+     *
+     * @param Request $request
+     * @param Author $author
+     * @param ObjectManager $manager
+     * @param $id
+     * @param ValidatorInterface $validator
+     * @param SerializerInterface $serializer
+     *
+     * @return Response
+     */
+    public function putAuthorAction(Request $request, Author $author, ObjectManager $manager, $id, ValidatorInterface $validator, SerializerInterface $serializer)
+    {
+        $authorRepository = $manager->getRepository(Author::class);
+        $savedAuthor = $authorRepository->find($id);
+
+        $authorForm = $this->createForm(AuthorType::class, $savedAuthor);
+        $authorForm->submit($request->request->all());
+
+        $errors = $validator->validate($author);
+
+        if (!count($errors) ) {
+            $jsonObject = $serializer->serialize($author, 'json', [
+                'circular_reference_handler' => function ($object) {
+                    return $object->getId();
+                }
+            ]);
+
+            $manager->persist($savedAuthor);
+            $manager->flush();
+            return new Response($jsonObject, Response::HTTP_OK, ['Content-Type' => 'application/json']);
+        }
+
+        return new Response('Error', Response::HTTP_NOT_FOUND, ['Content-Type' => 'application/json']);
+    }
+
+    /**
+     * @FOSRest\Delete("/api/authors/{id}")
+     *
+     * @param ObjectManager $manager
+     * @param $id
+     *
+     * @return Response
+     */
+    public function deleteAuthorAction(ObjectManager $manager, $id)
+    {
+        $authorRepository = $manager->getRepository(Author::class);
+        $author = $authorRepository->find($id);
+
+        if (!is_null($author)) {
+            $manager->remove($author);
+            $manager->flush();
+            return new Response('Ok', Response::HTTP_OK, ['Content-Type' => 'application/json']);
+        }
+
+        return new Response('Error', Response::HTTP_NOT_FOUND, ['Content-Type' => 'application/json']);
     }
 }

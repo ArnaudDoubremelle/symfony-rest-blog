@@ -24,7 +24,7 @@ class Category
     private $name;
 
     /**
-     * @ORM\OneToMany(targetEntity="App\Entity\Article", mappedBy="category")
+     * @ORM\OneToMany(targetEntity="App\Entity\Article", mappedBy="category", orphanRemoval=true)
      */
     private $articles;
 
@@ -79,10 +79,5 @@ class Category
         }
 
         return $this;
-    }
-
-    public function __toString()
-    {
-        return (string) $this->getId();
     }
 }
